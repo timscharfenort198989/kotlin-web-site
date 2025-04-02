@@ -64,6 +64,8 @@ To use the standard library in your project, add the following dependency to you
     <dependency>
         <groupId>org.jetbrains.kotlin</groupId>
         <artifactId>kotlin-stdlib</artifactId>
+        <!-- Uses the kotlin.version property 
+            specified in <properties/>: --> 
         <version>${kotlin.version}</version>
     </dependency>
 </dependencies>
@@ -135,25 +137,43 @@ If you need to configure an execution, you need to specify its ID. You can find 
 
 ## Compile Kotlin and Java sources
 
-To compile projects that include Kotlin and Java source code, invoke the Kotlin compiler before the Java compiler.
-In Maven terms it means that `kotlin-maven-plugin` should be run before `maven-compiler-plugin` using the following method,
-making sure that the `kotlin` plugin comes before the `maven-compiler-plugin` in your `pom.xml` file:
+To compile a project with both Kotlin and Java source files, make sure the Kotlin compiler runs before the Java compiler.
+The Java compiler can't see Kotlin declarations until they are compiled into `.class` files.
+If your Java code uses Kotlin classes, those classes must be compiled first to avoid `cannot find symbol` errors.
+
+Maven determines plugin execution order based on two main factors:
+
+* The order of plugin declarations in the `pom.xml` file.
+* Built-in default executions, such as `default-compile` and `default-testCompile`, which always run before user-defined executions,
+  regardless of their position in the `pom.xml` file.
+
+To control the execution order:
+
+* Declare `kotlin-maven-plugin` before `maven-compiler-plugin`.
+* Disable the Java compiler plugin's default executions.
+* Add custom executions to control the compile phases explicitly.
+
+> You can use the special none phase in Maven to disable a default execution.
+>
+{style="note"}
+
+Here's an example configuration:
 
 ```xml
 <build>
     <plugins>
+        <!-- Kotlin compiler plugin -->
         <plugin>
             <groupId>org.jetbrains.kotlin</groupId>
             <artifactId>kotlin-maven-plugin</artifactId>
             <version>${kotlin.version}</version>
-            <extensions>true</extensions> <!-- You can set this option 
-            to automatically take information about lifecycles -->
+            <extensions>true</extensions>
             <executions>
                 <execution>
-                    <id>compile</id>
+                    <id>kotlin-compile</id>
+                    <phase>compile</phase>
                     <goals>
-                        <goal>compile</goal> <!-- You can skip the <goals> element 
-                        if you enable extensions for the plugin -->
+                        <goal>compile</goal>
                     </goals>
                     <configuration>
                         <sourceDirs>
@@ -163,10 +183,10 @@ making sure that the `kotlin` plugin comes before the `maven-compiler-plugin` in
                     </configuration>
                 </execution>
                 <execution>
-                    <id>test-compile</id>
-                    <goals> 
-                        <goal>test-compile</goal> <!-- You can skip the <goals> element 
-                    if you enable extensions for the plugin -->
+                    <id>kotlin-test-compile</id>
+                    <phase>test-compile</phase>
+                    <goals>
+                        <goal>test-compile</goal>
                     </goals>
                     <configuration>
                         <sourceDirs>
@@ -177,11 +197,14 @@ making sure that the `kotlin` plugin comes before the `maven-compiler-plugin` in
                 </execution>
             </executions>
         </plugin>
+
+        <!-- Java compiler plugin -->
         <plugin>
             <groupId>org.apache.maven.plugins</groupId>
             <artifactId>maven-compiler-plugin</artifactId>
-            <version>3.5.1</version>
+            <version>3.8.1</version>
             <executions>
+                <!-- Disable default executions -->
                 <execution>
                     <id>default-compile</id>
                     <phase>none</phase>
@@ -190,6 +213,8 @@ making sure that the `kotlin` plugin comes before the `maven-compiler-plugin` in
                     <id>default-testCompile</id>
                     <phase>none</phase>
                 </execution>
+
+                <!-- Define custom executions -->
                 <execution>
                     <id>java-compile</id>
                     <phase>compile</phase>
@@ -210,28 +235,15 @@ making sure that the `kotlin` plugin comes before the `maven-compiler-plugin` in
 </build>
 ```
 
-There are a couple of notes to make here. First, since Maven 3.0.3, the plugins that bound to the same phase have specific execution order. 
-In particular, if plugin `A` is bind to phase `compile` and plugin `B` is bind to phase `compile`, then whoever is executed first is resolved by
-their declaration order in the `pom.xml`. It simply means if `A` is declared before `B` in `pom.xml`, the `A` will be executed prior to `B`. However,
-the built-in plugins native executions, like for plugins `maven-compiler-plugin`, `maven-jar-plugin` e.t.c are executed first regardless of their 
-order in `pom.xml`. Their execution ids are typically named `default-_someting_`. 
+This configuration ensures the following:
 
-Therefore, by specifying the following execution for `maven-compiler-plugin`: 
+* Kotlin code is compiled first.
+* Java code is compiled after Kotlin and can reference Kotlin classes.
+* Default Maven behavior doesn't override the plugin order.
 
-```
-<execution>
-    <id>default-compile</id>
-    <phase>none</phase>
-</execution>
-<execution>
-    <id>default-testCompile</id>
-    <phase>none</phase>
-</execution>
-```
-
-we're effectively disabling the default executions of `maven-compiler-plugin`. Please, note, that usage of phase 'none' is just a well-known workaround for
-disabling the particualr execution of plugin in Maven. By disabling `default-compile` and `default-testCompile` executions, the new executions `java-compile`
-and not treated as predefined, therefore, and hence the `kotlin-maven-plugin`, as it is declared first, takes precedence. 
+For more details on how Maven handles plugin executions,
+see [Guide to default plugin execution IDs](https://maven.apache.org/guides/mini/guide-default-execution-ids.html) in
+the official Maven documentation.
 
 ## Enable incremental compilation
 
